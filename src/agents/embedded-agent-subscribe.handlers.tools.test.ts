@@ -2436,4 +2436,50 @@ describe("handleToolExecutionEnd directReply path — media support", () => {
     const artifact = extractToolResultMediaArtifact(result);
     expect(artifact?.mediaUrls).toEqual(["https://example.com/file.zip"]);
   });
+
+  it("filters local media from a builtin-but-untrusted tool (uses trustedLocalMediaToolNames, not builtinToolNames)", async () => {
+    const { ctx } = createTestContext();
+    const emitBlockReply = vi.fn();
+    const abortRun = vi.fn();
+    ctx.emitBlockReply = emitBlockReply;
+    ctx.abortRun = abortRun;
+    // "custom" is registered/builtin but NOT trusted to expose local media.
+    ctx.builtinToolNames = new Set(["custom"]);
+    ctx.trustedLocalMediaToolNames = new Set();
+
+    await runWithResult(ctx, {
+      directReply: true,
+      content: [{ type: "text", text: "Done" }],
+      details: { directReply: true, media: { mediaUrls: ["/tmp/secret.png"] } },
+    });
+
+    // The local media path must be stripped: it would only survive if the trust
+    // check incorrectly used builtinToolNames (the pre-fix trust-boundary regression).
+    expect(emitBlockReply).toHaveBeenCalledOnce();
+    const payload = emitBlockReply.mock.calls[0]?.[0] as { text?: string; mediaUrls?: string[] };
+    expect(payload.text).toBe("Done");
+    expect(payload.mediaUrls ?? []).not.toContain("/tmp/secret.png");
+    expect(abortRun).toHaveBeenCalledWith("direct_reply");
+  });
+
+  it("delivers local media when the tool is in trustedLocalMediaToolNames", async () => {
+    const { ctx } = createTestContext();
+    const emitBlockReply = vi.fn();
+    const abortRun = vi.fn();
+    ctx.emitBlockReply = emitBlockReply;
+    ctx.abortRun = abortRun;
+    ctx.builtinToolNames = new Set();
+    ctx.trustedLocalMediaToolNames = new Set(["custom"]);
+
+    await runWithResult(ctx, {
+      directReply: true,
+      content: [],
+      details: { directReply: true, media: { mediaUrls: ["/tmp/trusted.png"] } },
+    });
+
+    expect(emitBlockReply).toHaveBeenCalledWith(
+      expect.objectContaining({ mediaUrls: ["/tmp/trusted.png"] }),
+    );
+    expect(abortRun).toHaveBeenCalledWith("direct_reply");
+  });
 });

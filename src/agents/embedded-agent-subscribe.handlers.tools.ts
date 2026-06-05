@@ -1575,7 +1575,7 @@ export async function handleToolExecutionEnd(
           rawToolName,
           mediaArtifact.mediaUrls,
           result,
-          ctx.builtinToolNames,
+          ctx.trustedLocalMediaToolNames,
         )
       : [];
     const hasContent = Boolean(outputText) || mediaUrls.length > 0;
